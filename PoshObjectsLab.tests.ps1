@@ -37,12 +37,18 @@ describe "Dealing with Server objects" {
         $DC.ServerList.Count | Should  be 1
     }
 
-
     it "should leave zero objects" {
         $DC.ServerList.Clear()
         $S1 = Add-Server -MemoryGB 1 -CpuCount 1 -ServerOS "Test-OS1"
         Remove-Server -Server $S1  
         $DC.ServerList.Count | Should  be 0
+    }
+
+    it "should cost be greater than 0" {
+        $DC.ServerList.Clear()
+        $S1 = Add-Server -MemoryGB 1 -CpuCount 1 -ServerOS "Test-OS1"
+        Start-Sleep -Seconds 1
+        Get-TotalCost -Server $S1 | Should be -gt 0
     }
 
 }

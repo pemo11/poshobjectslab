@@ -4,12 +4,15 @@
  .Description
  A very tiny data center simulation with class based objects - Version 1
  .Notes
- Last Update: 19/05/2017
+ Last Update: 21/05/2017
 #>
 
 Set-StrictMode -Version Latest
 
 Import-LocalizedData -BindingVariable MsgTable -FileName PoshObjectsLabText.psd1
+
+$Script:CostPerCPUHour = 0.2
+$Script:CostPerGBHour = 0.1
 
 # Different event categories
 enum EventCategory
@@ -53,7 +56,6 @@ class Server
   [Long]$MemoryGB
   [Byte]$CPUCount
   [String]$ServerOS
-  [Double]$CostPerSecond = 0.05
   [System.Timers.Timer]$Timer
   [System.Collections.Generic.List[LogEvent]]$Eventlog
 
@@ -65,6 +67,8 @@ class Server
     $this.Timer = New-Object -TypeName System.Timers.Timer
     $this.Timer.Interval = 5000
     $this.Eventlog = New-Object -TypeName System.Collections.Generic.List[LogEvent]
+    # Event vorsichtshalber entfernen
+    Unregister-Event -SourceIdentifier "ServerEvent$($this.Id)" -Force -ErrorAction Ignore
     Register-ObjectEvent -InputObject $this.Timer -EventName Elapsed -SourceIdentifier "ServerEvent$($this.Id)" `
      -Action {
         $EventLog = $Event.MessageData
@@ -89,7 +93,8 @@ class Server
   # Gets the current cost of this server
   [Double]GetCost()
   {
-    return $this.GetRunningTime().TotalSeconds * $this.CostPerSecond
+      $RunningHours = ((Get-Date) - $this.StartTime).TotalHours
+      return $Script:CostPerCPUHour * $RunningHours + $Script:CostPerGBHour * $RunningHours
   }
 
 }
@@ -138,6 +143,21 @@ class DataCenter
         $this.ServerList.Remove($Server)
     }
 
+}
+
+# Represents the cost for one Server
+class ServerCost
+{
+    [Int]$ServerId
+    [DateTime]$StartTime
+    [double]$Cost
+
+    ServerCost([Server]$Server)
+    {
+        $this.ServerId = $Server.Id
+        $this.StartTime = $Server.StartTime
+        $this.Cost = $Server.GetCost()
+    }   
 }
 
 $Global:DC = [DataCenter]::new(0)
@@ -193,4 +213,15 @@ function Get-Server
     return $Global:DC.ServerList
 }
 
-Export-ModuleMember -Function  Add-Server, Remove-Server, Remove-ServerbyId, Get-Server
+<#
+ .Synopsis
+ Gets the total cost of all servers
+#>
+function Get-TotalCost
+{
+    $Global:DC.ServerList | ForEach-Object {
+        [ServerCost]::new($_)
+    }
+}
+
+Export-ModuleMember -Function  Add-Server, Remove-Server, Remove-ServerbyId, Get-Server, Get-TotalCost 
