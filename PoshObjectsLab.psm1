@@ -127,10 +127,17 @@ class DataCenter
         return $NewServer
     }
 
-    [void]RemoveServer([Int]$Id)
+    [void]RemoveServer([Server]$Server)
     {
-        $this.ServerList.Remove($Id)
+        $this.ServerList.Remove($Server)
     }
+
+    [void]RemoveServer([Int]$ServerId)
+    {
+        $Server = $this.ServerList.Where{$_.Id -eq $ServerId}
+        $this.ServerList.Remove($Server)
+    }
+
 }
 
 $Global:DC = [DataCenter]::new(0)
@@ -148,17 +155,32 @@ function Add-Server
 
 <#
  .Synopsis
+ Removes a server by Server Id
+#>
+function Remove-ServerById
+{
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param([Int]$ServerId)
+    $RemoveServer = $Global:DC.ServerList | Where-Object Id -eq $ServerId
+    if ($PSCmdlet.ShouldProcess(($MsgTable.RemoveServerMsg -f $ServerId), "From the loop"))
+    {
+        $Global:DC.RemoveServer($RemoveServer)
+        Write-Verbose "Server ($MsgTable.ServerRemovedMsg -f $ServerId)."
+    }
+}
+
+<#
+ .Synopsis
  Removes a server
 #>
 function Remove-Server
 {
-    [CmdletBinding()]
-    param([Int]$ServerId)
-    $ServerRemove = $this.ServerList | Where Id -eq $Id
-    if ($PSCmdlet.ShouldProcess(($MsgTable.RemoveServerMsg -f $Id), "From the loop"))
+    [CmdletBinding(SupportsShouldProcess=$true)]
+    param([Server]$Server)
+    if ($PSCmdlet.ShouldProcess(($MsgTable.RemoveServerMsg -f $Server.Id), "From the loop"))
     {
-        $Global:DC.RemoveServer($ServerId)
-        Write-Verbose "Server ($MsgTable.ServerRemovedMsg -f $Id)."
+        $Global:DC.RemoveServer($Server)
+        Write-Verbose "Server ($MsgTable.ServerRemovedMsg -f $Server.Id)."
     }
 }
 
@@ -171,4 +193,4 @@ function Get-Server
     return $Global:DC.ServerList
 }
 
-Export-ModuleMember -Function  Add-Server, Remove-Server, Get-Server
+Export-ModuleMember -Function  Add-Server, Remove-Server, Remove-ServerbyId, Get-Server

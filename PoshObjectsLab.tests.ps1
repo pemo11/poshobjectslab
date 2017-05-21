@@ -3,7 +3,7 @@
 
 describe "Dealing with Server objects" {
     BeforeAll {
-        Import-Module -Name PoshObjectsLab
+        Import-Module -Name PoshObjectsLab -Force
     }
 
     AfterAll {
@@ -27,6 +27,22 @@ describe "Dealing with Server objects" {
         Add-Server -MemoryGB 1 -CpuCount 1 -ServerOS "Test-OS"
         Add-Server -MemoryGB 1 -CpuCount 1 -ServerOS "Test-OS"
         $DC.ServerList.Count | Should  be 2
+    }
+
+    it "should leave one object" {
+        $DC.ServerList.Clear()
+        $S1 = Add-Server -MemoryGB 1 -CpuCount 1 -ServerOS "Test-OS1"
+        $S2 = Add-Server -MemoryGB 1 -CpuCount 1 -ServerOS "Test-OS2"
+        Remove-ServerById -ServerId $S2.Id  
+        $DC.ServerList.Count | Should  be 1
+    }
+
+
+    it "should leave zero objects" {
+        $DC.ServerList.Clear()
+        $S1 = Add-Server -MemoryGB 1 -CpuCount 1 -ServerOS "Test-OS1"
+        Remove-Server -Server $S1  
+        $DC.ServerList.Count | Should  be 0
     }
 
 }
