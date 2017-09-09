@@ -1,4 +1,25 @@
 {
     "CompanyName":"Pemo Data Services",
-    "InitCapital":"1000"
+    "InitialCapital":"1000",
+    "Hardware":
+    [
+        {
+            "Name":"Server1",
+            "ServerSize":"Small",
+            "InitialCost":200,
+            "TCO":2,
+            "OS":"Windows Server 2012 R2",
+            "RAMGB":1,
+            "CPUCount":2
+           },
+           {
+             "Name":"Server2",
+             "ServerSize":"Medium",
+             "InitialCost":200,
+             "TCO":1.5,
+             "OS":"Suse Linux",
+             "RAMGB":0.5,
+             "CPUCount":1
+           }
+    ]
 }

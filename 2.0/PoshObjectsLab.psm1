@@ -114,11 +114,26 @@ class CustomerOrder
     }
 }
 
+# Represents account details
+class Accounting
+{
+    [Double]$Capital
+
+    Accounting([Double]$Capital)
+    {
+        $this.Capital = $Capital
+    }
+    
+}
+
 # Represents the whole Data Center
 class DataCenter
 {
     # A unique Id for the DC
     [int]$Id
+
+    # The name of the fictious company
+    [String]$CompanyName
 
     # Contains the Starttime of the DC
     [DateTime]$StartTime 
@@ -167,13 +182,21 @@ class DataCenter
     {
         $this.Serverlist = New-Object -TypeName System.Collections.Generic.List[Server]
         $InitialConfig | ConvertFrom-Json | ForEach-Object {
-            $Server = [Server]::new()
-            $Server.Caption = $_.ServerCaption
-            $Server.ServerOS = $_.ServerOS
-            $Server.Size = $_.ServerService
-            $Server.MemoryGB = $_.MemoryGB
-            $Server.CpuCount = $_.CPUCount
-            $this.Serverlist.Add($Server)
+            $this.CompanyName = $_.CompanyName
+            $this.Accounting = [Accounting]::new($_.InitialCapital)
+            foreach($Server in $_.Hardware)
+            {
+                $Server = [Server]::new()
+                $Server.Name = $_.Name
+                $Server.ServerOS = $_.OS
+                $Server.TCO = $_.TCO
+                $Server.Size = $_.ServerService
+                $Server.MemoryGB = $_.GB
+                $Server.CpuCount = $_.CPUCount
+                # Take Server price into account
+                $this.Accounting.Capital -= $_.InitialCost  
+                $this.Serverlist.Add($Server)
+            }
         }
     }
 
