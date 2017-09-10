@@ -2,17 +2,15 @@
  .Synopsis
  Posh Objects Lab 
  .Description
- A very tiny data center simulation with class based objects - Version 1
+ A very tiny data center simulation with class based objects - Version 2
+ The current version also supports a kind of accounting
  .Notes
- Last Update: 21/05/2017
+ Last Update: 10/09/2017
 #>
 
 Set-StrictMode -Version Latest
 
 Import-LocalizedData -BindingVariable MsgTable -FileName PoshObjectsLabText.psd1
-
-$Script:CostPerCPUHour = 0.2
-$Script:CostPerGBHour = 0.1
 
 # Different event categories
 enum EventCategory
@@ -46,16 +44,28 @@ Enum ServerState
     Stopped
 }
 
+# Represents the different server status states
+Enum ServerStatus
+{
+    Green
+    Yellow
+    Orange
+    Red
+}
+
 # Represents a single server
 class Server
 {
   [Int]$Id
   [String]$Name
   [DateTime]$StartTime
-  [ServerState]$Status
+  [ServerState]$State
+  [ServerStatus]$Status
   [Long]$MemoryGB
   [Byte]$CPUCount
   [String]$ServerOS
+  [Double]$CostPerHour
+  [Int]$RunningTimeSecond
   [System.Timers.Timer]$Timer
   [System.Collections.Generic.List[LogEvent]]$Eventlog
 
@@ -65,14 +75,21 @@ class Server
     $this.StartTime = Get-Date
     $this.Status = [ServerState]::Running
     $this.Timer = New-Object -TypeName System.Timers.Timer
-    $this.Timer.Interval = 1000
+    $this.Timer.Interval = 5000
     $this.Eventlog = New-Object -TypeName System.Collections.Generic.List[LogEvent]
     # Event vorsichtshalber entfernen
     Unregister-Event -SourceIdentifier "ServerEvent$($this.Id)" -Force -ErrorAction Ignore
     Register-ObjectEvent -InputObject $this.Timer -EventName Elapsed -SourceIdentifier "ServerEvent$($this.Id)" `
      -Action {
         $EventLog = $Event.MessageData
-        $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Just a silly remark"))        
+        $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Server-State: " + $this.ServerState +
+         " Server-Status: " + $this.ServerStatus))
+        # Calculate current costs  - the server is running anyway
+        if ($this.ServerState -eq "Running")
+        {
+            $this.RunningTimeSecond += 5
+            $this.TotalCost += $this.CostPerHour / 3600 * 5
+        }        
     } -MessageData $this.Eventlog
     $this.Timer.Start()
   }
@@ -84,19 +101,18 @@ class Server
     $this.Timer.Stop()
   }
 
-  # Get the running time of a server
+  # Get the running time of a server as a TimeSpan
   [TimeSpan]GetRunningTime()
   {
-    return ((Get-Date) - $this.StartTime)
+    return [TimeSpan]::new(0,0, $this.RunningTimeSecond)
   }
 
   # Gets the current cost of this server
   [Double]GetCost()
   {
-      $RunningHours = ((Get-Date) - $this.StartTime).TotalHours
-      return $Script:CostPerCPUHour * $RunningHours + $Script:CostPerGBHour * $RunningHours
+      $RunningHours = $this.RunningTimeSecond / 3600
+      return $this:CostPerCPUHour * $RunningHours
   }
-
 }
 
 # Represents a customer order
@@ -108,6 +124,7 @@ class CustomerOrder
     [Double]$RessourceAmount
     [bool]$Completed
 
+    # Constructor expects an Id
     CustomerId([Int]$Id)
     {
         $this.Order = $Id
@@ -119,6 +136,7 @@ class Accounting
 {
     [Double]$Capital
 
+    # Constructor expects the initial capital
     Accounting([Double]$Capital)
     {
         $this.Capital = $Capital
@@ -200,13 +218,14 @@ class DataCenter
         }
     }
 
-    [Server]AddServer([Int]$MemoryGB, [Int]$CpuCount, [String]$ServerOS)
+    [Server]AddServer([Int]$MemoryGB, [Int]$CpuCount, [String]$ServerOS, [Double]$CostPerHour)
     {
         $NewServer = [Server]::new()
         $NewServer.Id = $this.ServerList.Count + 1
         $NewServer.MemoryGB = $MemoryGB
         $NewServer.CPUCount = $CpuCount
         $NewServer.ServerOS = $ServerOS
+        $NewServer.CostPerHour = $CostPerHour
         $this.ServerList.Add($NewServer)
         return $NewServer
     }
@@ -229,7 +248,7 @@ class ServerCost
 {
     [Int]$ServerId
     [DateTime]$StartTime
-    [double]$Cost
+    [Double]$Cost
 
     ServerCost([Server]$Server)
     {
@@ -245,8 +264,8 @@ class ServerCost
 #>
 function Add-Server
 {
-    param([Int]$MemoryGB, [Int]$CpuCount, [String]$ServerOS)
-    $Global:DC.AddServer($MemoryGB, $CpuCount, $ServerOS)
+    param([Int]$MemoryGB, [Int]$CpuCount, [String]$ServerOS, [Double]$CostPerHour)
+    $Global:DC.AddServer($MemoryGB, $CpuCount, $ServerOS, $CostPerHour)
 }
 
 <#
@@ -327,8 +346,16 @@ Function New-Startup
     path([String]$ConfigPath)
     $Global:DC = [DataCenter]::new($ConfigPath)
 }
-Function New-Server
+
+<#
+.SYNOPSIS
+
+ Adds a new server
+
+#>
+function New-Server
 {
+    param()
 
 }
 
