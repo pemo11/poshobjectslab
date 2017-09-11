@@ -1,9 +1,30 @@
 ﻿
 # A few simple Pester-Tests
+using module .\2.0\PoshObjectsLab.psm1
 
-describe "Dealing with Server objects" {
+$JSonPath = ".\StartupCompany.json"
+
+describe "Initialize the Data Center" {
+
     BeforeAll {
-        Import-Module -Name PoshObjectsLab -Force
+        Import-Module -Name ..\PoshObjectsLab -RequiredVersion 2.0 -Force
+    }
+
+    AfterAll {
+        Remove-Module -Name PoshObjectsLab
+    }
+    
+    it "Should initialize a DC" {
+        $DC = [DataCenter]::new($JSonPath)
+        $DC | Should not be $null
+    }
+
+}
+describe "Dealing with Server objects" {
+    
+    BeforeAll {
+        Import-Module -Name ..\PoshObjectsLab -RequiredVersion 2.0 -Force
+        $DC = [DataCenter]::new($JSonPath)
     }
 
     AfterAll {
@@ -48,7 +69,7 @@ describe "Dealing with Server objects" {
         $DC.ServerList.Clear()
         $S1 = Add-Server -MemoryGB 1 -CpuCount 1 -ServerOS "Test-OS1"
         Start-Sleep -Seconds 1
-        Get-TotalCost -Server $S1 | Should be -gt 0
+        (Get-ServerCost -Server $S1 -gt 0) | Should be $true 
     }
 
 }

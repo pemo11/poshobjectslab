@@ -5,10 +5,13 @@
  A very tiny data center simulation with class based objects - Version 2
  The current version also supports a kind of accounting
  .Notes
- Last Update: 10/09/2017
+ Last Update: 11/09/2017
 #>
 
 Set-StrictMode -Version Latest
+
+# Stores the DataCenter object
+$Global:DC = $Null
 
 Import-LocalizedData -BindingVariable MsgTable -FileName PoshObjectsLabText.psd1
 
@@ -53,6 +56,13 @@ Enum ServerStatus
     Red
 }
 
+# Represents the general size of the server
+Enum ServerSize
+{
+    Small
+    Medium
+    Big
+}
 # Represents a single server
 class Server
 {
@@ -61,10 +71,11 @@ class Server
   [DateTime]$StartTime
   [ServerState]$State
   [ServerStatus]$Status
+  [ServerSize]$Size 
   [Long]$MemoryGB
   [Byte]$CPUCount
   [String]$ServerOS
-  [Double]$CostPerHour
+  [Double]$CostPerHour = 1
   [Int]$RunningTimeSecond
   [System.Timers.Timer]$Timer
   [System.Collections.Generic.List[LogEvent]]$Eventlog
@@ -85,7 +96,7 @@ class Server
         $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Server-State: " + $this.ServerState +
          " Server-Status: " + $this.ServerStatus))
         # Calculate current costs  - the server is running anyway
-        if ($this.ServerState -eq "Running")
+        if ($this.State -eq "Running")
         {
             $this.RunningTimeSecond += 5
             $this.TotalCost += $this.CostPerHour / 3600 * 5
@@ -111,7 +122,8 @@ class Server
   [Double]GetCost()
   {
       $RunningHours = $this.RunningTimeSecond / 3600
-      return $this:CostPerCPUHour * $RunningHours
+      # 0.1 damit nicht immer 0 herauskommt
+      return ($this:CostPerCPUHour * $RunningHours + 0.1)
   }
 }
 
@@ -152,7 +164,10 @@ class DataCenter
 
     # The name of the fictious company
     [String]$CompanyName
-
+    
+    # The Account Data
+    [Accounting]$Account
+    
     # Contains the Starttime of the DC
     [DateTime]$StartTime 
 
@@ -169,7 +184,7 @@ class DataCenter
     [System.Collections.Generic.List[LogEvent]]$Eventlog
     
     # Initializes the Data Center
-    DCInit()
+    [void]DCInit()
     {
         $this.Id = 1
         $this.StartTime = Get-Date
@@ -196,23 +211,26 @@ class DataCenter
     }
 
     # Constructor of the class
-    DataCenter([String]$InitialConfig)
+    DataCenter([String]$CompanyConfigPath)
     {
+        $this.DCInit()
+        # Store reference of this instance in global variable
+        $Global:DC = $this
         $this.Serverlist = New-Object -TypeName System.Collections.Generic.List[Server]
-        $InitialConfig | ConvertFrom-Json | ForEach-Object {
+        Get-Content -Path $CompanyConfigPath | ConvertFrom-Json | ForEach-Object {
             $this.CompanyName = $_.CompanyName
-            $this.Accounting = [Accounting]::new($_.InitialCapital)
-            foreach($Server in $_.Hardware)
+            $this.Account = [Accounting]::new($_.InitialCapital)
+            foreach($HwData in $_.Hardware)
             {
                 $Server = [Server]::new()
-                $Server.Name = $_.Name
-                $Server.ServerOS = $_.OS
-                $Server.TCO = $_.TCO
-                $Server.Size = $_.ServerService
-                $Server.MemoryGB = $_.GB
-                $Server.CpuCount = $_.CPUCount
+                $Server.Name = $HwData.Name
+                $Server.ServerOS = $HwData.OS
+                $Server.CostPerHour = $HwData.TCO
+                $Server.Size = $HwData.ServerSize
+                $Server.MemoryGB = $HwData.RAMGB
+                $Server.CpuCount = $HwData.CPUCount
                 # Take Server price into account
-                $this.Accounting.Capital -= $_.InitialCost  
+                $this.Account.Capital -= $HwData.InitialCost  
                 $this.Serverlist.Add($Server)
             }
         }
@@ -314,11 +332,23 @@ function Get-Server
 #>
 function Get-TotalCost
 {
+    $ServerCost = 0
     $Global:DC.ServerList | ForEach-Object {
-        [ServerCost]::new($_)
+        $ServerCost += [ServerCost]::new($_).Cost
     }
+    return $ServerCost
 }
 
+<#
+.SYNOPSIS
+Gets the cost of one server
+#>
+function Get-ServerCost
+{
+    param([Server]$Server)
+    return [ServerCost]::new($Server).Cost
+    
+}
 <#
  .Synopsis
  Get all orders
@@ -328,9 +358,9 @@ function Get-Order
     $Global:DC.OrderList
 }
 
-$ConfigPath = Join-Path -Path $PSScriptRoot -ChildPath .\StartupCompany.json
-$Global:DC = [DataCenter]::new($ConfigPath)
-Write-Verbose $MsgTable.InitializedMsg -Verbose
+# $ConfigPath = Join-Path -Path $PSScriptRoot -ChildPath .\StartupCompany.json
+# $Global:DC = [DataCenter]::new($ConfigPath)
+# Write-Verbose $MsgTable.InitializedMsg -Verbose
 
 
 # Ab hier neue Funktionalitäten der Version 2.0
@@ -341,9 +371,9 @@ Initialize a new Startup-Company
 .DESCRIPTION
 Each DataCenter is run by a Startup-Company
 #>
-Function New-Startup
+Function New-DCStartup
 {
-    path([String]$ConfigPath)
+    param([Parameter(Mandatory=$true)][String]$ConfigPath)
     $Global:DC = [DataCenter]::new($ConfigPath)
 }
 
@@ -359,4 +389,10 @@ function New-Server
 
 }
 
-Export-ModuleMember -Function  Add-Server, Remove-Server, Remove-ServerbyId, Get-Server, Get-TotalCost 
+Export-ModuleMember -Function  Add-Server, 
+                               Remove-Server, 
+                               Remove-ServerbyId, 
+                               Get-Server,
+                               Get-ServerCost,
+                               Get-TotalCost,
+                               New-DCStartup 
