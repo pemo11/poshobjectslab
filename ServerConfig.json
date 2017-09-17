@@ -1,0 +1,30 @@
+[
+    {
+       "Size":"Small",
+       "Config": {
+        "CPUCount":1,
+        "RAMGB":8,
+        "OS":"Windows Server 2012 SBE",
+        "CostPerHour":0.2
+        }
+    },
+    {
+       "Size":"Medium",
+        "Config": {
+          "CPUCount":2,
+          "RAMGB":16,
+          "OS":"Windows Server 2012 R2 DataCenter",
+          "CostPerHour":0.4
+        }
+    },
+    {
+       "Size":"Large",
+       "Config": {
+          "CPUCount":8,
+          "RAMGB":32,
+          "OS":"Windows Server 2016 Datacenter",
+          "CostPerHour":0.8
+        }
+    }
+]
+   
