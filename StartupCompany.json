@@ -10,8 +10,14 @@
         },
         {
              "Name":"Server2",
-             "ServerSize":"Medium",
+             "ServerSize":"Small",
              "InitialCost":200
+        },
+        {
+            "Name":"Server3",
+            "ServerSize":"Medium",
+            "InitialCost":400
         }
+
     ]
 }

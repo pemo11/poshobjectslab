@@ -5,12 +5,48 @@
 
 <#
  .Synopsis
- Adds a new server
+ Adds a new server to the DC
 #>
 function Add-Server
 {
-    param([ServerSize]$Size="Small", [Int]$MemoryGB, [Int]$CpuCount, [String]$ServerOS, [Double]$CostPerHour)
-    $Global:DC.AddServer($Size, $MemoryGB, $CpuCount, $ServerOS, $CostPerHour)
+    param([ServerSize]$Size="Small")
+    $Global:DC.AddServer($Size)
+}
+
+<#
+ .Synopsis
+ Starts a server
+#>
+function Start-Server
+{
+    param([Parameter(Mandatory=$true)][Int]$ServerId)
+    $Server = $Global:DC.ServerList.Where{$_.Id -eq $ServerId}
+    if ($Server -ne $null)
+    {
+        $Server.Start()
+        Write-Verbose ($MsgTable.ServerStartedMsg -f $ServerId)
+    }
+    else {
+        Write-Verbose ($MsgTable.ServerNotFoundMsg -f $ServerId)
+    }
+}
+
+<#
+ .Synopsis
+ Starts a server
+#>
+function Stop-Server
+{
+    param([Parameter(Mandatory=$true)][Int]$ServerId)
+    $Server = $Global:DC.ServerList.Where{$_.Id -eq $ServerId}
+    if ($Server -ne $null)
+    {
+        $Server.Stop()
+        Write-Verbose ($MsgTable.ServerStoppedMsg -f $ServerId)
+    }
+    else {
+        Write-Verbose ($MsgTable.ServerNotFoundMsg -f $ServerId)
+    }
 }
 
 <#
@@ -25,7 +61,7 @@ function Remove-ServerById
     if ($PSCmdlet.ShouldProcess(($MsgTable.RemoveServerMsg -f $ServerId), "From the loop"))
     {
         $Global:DC.RemoveServer($RemoveServer)
-        Write-Verbose "Server ($MsgTable.ServerRemovedMsg -f $ServerId)."
+        Write-Verbose ($MsgTable.ServerRemovedMsg -f $ServerId)
     }
 }
 
@@ -40,7 +76,7 @@ function Remove-Server
     if ($PSCmdlet.ShouldProcess(($MsgTable.RemoveServerMsg -f $Server.Id), "From the loop"))
     {
         $Global:DC.RemoveServer($Server)
-        Write-Verbose "Server ($MsgTable.ServerRemovedMsg -f $Server.Id)."
+        Write-Verbose ($MsgTable.ServerRemovedMsg -f $Server.Id)
     }
 }
 
@@ -75,14 +111,6 @@ function Get-ServerCost
     param([Server]$Server)
     return [ServerCost]::new($Server).Cost
 }
-<#
- .Synopsis
- Get all orders for the DC
-#>
-function Get-Order
-{
-    $Global:DC.OrderList
-}
 
 <#
 .SYNOPSIS
@@ -95,17 +123,5 @@ function New-DCStartup
 {
     param([Parameter(Mandatory=$true)][String]$ConfigPath, 
           [String]$ServerConfigPath)
-    if (Test-Path -Path $ServerConfigPath)
-    {
-        Type -Path $ServerConfigPath | ConvertFrom-Json | ForEach-Object {
-        $Global:ServerConfig += { $_.Size = [PSCustomObject]{
-                                              CPUCount = $_.Config.CPUCount
-                                              RAMB = $_.Config.RAMGB
-                                              OS = $_.Config.OS
-                                            }
-                                }
-        }
-    }
-    return [DataCenter]::new($ConfigPath)
+    return [DataCenter]::new($ConfigPath, $ServerConfigPath)
 }
-
