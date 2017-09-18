@@ -2,8 +2,8 @@
  .Synopsis
  Posh Objects Lab 
  .Description
- A very tiny data center simulation with class based objects - Version 2
- The current version supports server configuration with Json files
+ A very tiny data center simulation with class based objects - Version 3
+ The current version also supports billing and running a profitable data center
  .Notes
  Last Update: 18/09/2017
 #>
@@ -141,6 +141,36 @@ class Server
   }
 }
 
+# Represents a customer order
+class CustomerOrder
+{
+    [Int]$Id
+    [DateTime]$OrderDate
+    [String]$CustomerName
+    [Double]$RessourceAmount
+    [bool]$Completed
+
+    # Constructor expects an Id
+    CustomerId([Int]$Id)
+    {
+        $this.Order = $Id
+    }
+
+}
+
+# Represents account details
+class Accounting
+{
+    [Double]$Capital
+
+    # Constructor expects the initial capital
+    Accounting([Double]$Capital)
+    {
+        $this.Capital = $Capital
+    }
+    
+}
+
 # Represents the whole Data Center
 class DataCenter
 {
@@ -150,12 +180,18 @@ class DataCenter
     # The name of the fictious company
     [String]$CompanyName
     
+    # The Account Data for billing
+    [Accounting]$Account
+    
     # The Starttime of the DC
     [DateTime]$StartTime 
 
     # Contains all the servers of the DC
     [System.Collections.Generic.List[Server]]$ServerList
 
+    # Contains all the orders
+    [System.Collections.Generic.List[Server]]$OrderList
+        
     # A timer that generates events in the DC
     [System.Timers.Timer]$Timer
 
@@ -176,8 +212,17 @@ class DataCenter
         Unregister-Event -SourceIdentifier "DCTimer$($this.Id)" -Force -ErrorAction Ignore
         Register-ObjectEvent -InputObject $this.Timer -EventName Elapsed -SourceIdentifier "DCTimer$($this.Id)" `
          -Action {
-            $EventLog = $Event.MessageData
-            $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "New Order placed"))        
+            # Generate new customer order eventually
+            if ((Get-Random -Maximum 10) -gt 5)
+            {
+                $Order = [CustomerOrder]::new($this.OrderList + 1)
+                $Order.OrderDate = Get-Date
+                $Order.CustomerName = "ALFKI", "ANATR", "ANTON" | Get-Random
+                $Order.RessourceAmount = 1..100 | Get-Random
+                $this.OrderList.Add($Order)
+                $EventLog = $Event.MessageData
+                $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "New Order placed"))        
+                }
         } -MessageData $this.Eventlog
         $this.Timer.Start()
     }
@@ -191,10 +236,13 @@ class DataCenter
         # Read configuration and server data from json file
         Get-Content -Path $CompanyConfigPath | ConvertFrom-Json | ForEach-Object {
             $this.CompanyName = $_.CompanyName
+            $this.Account = [Accounting]::new($_.InitialCapital)
             foreach($HwData in $_.Hardware)
             {
                 $Server = [Server]::new($HwData.ServerSize)
                 $Server.Name = $HwData.Name
+                # Take Server price into account
+                $this.Account.Capital -= $HwData.InitialCost  
                 $this.Serverlist.Add($Server)
             }
         }
@@ -258,5 +306,6 @@ Remove-Server,
 Remove-ServerbyId, 
 Get-Server,
 Get-ServerCost,
-Get-TotalCost
+Get-TotalCost,
+Get-Order
  
