@@ -5,7 +5,7 @@
  A very tiny data center simulation with class based objects - Version 2
  The current version supports server configuration with Json files
  .Notes
- Last Update: 18/09/2017
+ Last Update: 19/09/2017
 #>
 
 Set-StrictMode -Version Latest
@@ -68,7 +68,7 @@ Enum ServerSize
 {
     Small
     Medium
-    Big
+    Large
 }
 
 # Represents a single server
@@ -122,7 +122,44 @@ class Server
         {
             $Event.MessageData.RunningTimeSeconds += 5
             $Event.MessageData.TotalCost += $Event.MessageData.CostPerHour / 3600 * 5
-        }        
+        }
+        # Change Server status
+        switch($Event.MessageData.Status)
+        {
+            "Green" {
+                # 20% chance to change to yellow
+                if ([System.Random]::new().NextDouble() -gt 0.8)
+                {
+                    $Event.MessageData.Status = "Yellow"
+                    $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Server State switch to Yellow"))
+                }
+            }
+            "Yellow" {
+                # 15% chance to change to Orange
+                if ([System.Random]::new().NextDouble() -gt 0.85)
+                {
+                    $Event.MessageData.Status = "Orange"
+                    $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Server State switch to Orange"))
+                }
+            }
+            "Orange" {
+                # 15% chance to change to Red
+                if ([System.Random]::new().NextDouble() -gt 0.9)
+                {
+                    $Event.MessageData.Status = "Red"
+                    $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Server State switch to Red"))
+                }
+            }
+            "Red" {
+                # 80% chance to change to Green
+                if ([System.Random]::new().NextDouble() -gt 0.2)
+                {
+                    $Event.MessageData.Status = "Green"
+                    $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Server State switch to Green"))
+                }
+           }
+        }
+
     } -MessageData $this
     $this.Timer.Start()
   }
@@ -221,7 +258,7 @@ class DataCenter
     {
         $NewServer = [Server]::new($Size, $this.ServerList.Count + 1)
         $this.ServerList.Add($NewServer)
-        Write-Verbose ($Script:MsgTable.ServerAdded -f $Size)
+        Write-Verbose ($Script:MsgTable.ServerAddedMsg -f $Size)
         return $NewServer
     }
 
@@ -229,7 +266,7 @@ class DataCenter
     [void]RemoveServer([Server]$Server)
     {
         $this.ServerList.Remove($Server)
-        Write-Verbose ($Script:MsgTable.ServerRemoved -f $Server)
+        Write-Verbose ($Script:MsgTable.ServerRemovedMsg -f $Server)
     }
 
     # Remove Server method
@@ -239,10 +276,10 @@ class DataCenter
         if ($Server -ne $null)
         {
             $this.ServerList.Remove($Server)
-            Write-Verbose ($Script:MsgTable.ServerRemoved -f $Server)
+            Write-Verbose ($Script:MsgTable.ServerRemovedMsg-f $ServerId)
         }
         else {
-            throw ($Script:MsgTable.ServerNotFound -f $ServerId)
+            throw ($Script:MsgTable.ServerNotFoundMsg -f $ServerId)
         }
     }
 } # End DC class definition
@@ -265,6 +302,7 @@ class ServerCost
 } # End ServerCost class definition
 
 Export-ModuleMember -Function  New-DCStartup,
+Get-DCStatus,
 Add-Server, 
 Start-Server,
 Stop-Server,

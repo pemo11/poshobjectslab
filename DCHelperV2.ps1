@@ -123,5 +123,20 @@ function New-DCStartup
 {
     param([Parameter(Mandatory=$true)][String]$ConfigPath, 
           [String]$ServerConfigPath)
-    return [DataCenter]::new($ConfigPath, $ServerConfigPath)
+    $Global:DC = [DataCenter]::new($ConfigPath, $ServerConfigPath)
+}
+
+<#
+.SYNOPSIS
+Gets the status of a Data Center
+#>
+function Get-DCStatus
+{
+    [PSCustomObject]@{
+        CompanyName = $Global:DC.CompanyName
+        ServerTotal = $Global:DC.ServerList.Count 
+        ServerRunning = ($Global:DC.ServerList.Where{$_.State -eq "Running"}).Count
+        ServerStopped = ($Global:DC.ServerList.Where{$_.State -eq "Stopped"}).Count
+        TotalCost = Get-TotalCost
+    }
 }

@@ -8,8 +8,10 @@ $ConfigPath = Join-Path -Path $PSScriptRoot -ChildPath .\StartupCompany.json
 # $ConfigPath = ".\StartupCompany.json"
 # type $JSonPath | ConvertFrom-Json
 $ServerConfigPath = Join-Path -Path $PSScriptRoot -ChildPath "ServerConfig.json"
-$DC = New-DCStartup -ConfigPath $ConfigPath -ServerConfigPath $ServerConfigPath 
+New-DCStartup -ConfigPath $ConfigPath -ServerConfigPath $ServerConfigPath 
+
 $DC
+
 $DC.ServerList
 
 # Start first server
@@ -25,3 +27,5 @@ Start-Sleep -Seconds 6
 $DC.ServerList.GetCost()
 
 Get-TotalCost
+
+Get-DCStatus

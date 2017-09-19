@@ -2,10 +2,10 @@
  .Synopsis
  Posh Objects Lab 
  .Description
- A very tiny data center simulation with class based objects - Version 3
- The current version also supports billing and running a profitable data center
+ A very tiny data center simulation with class based objects - Version 2
+ The current version supports server configuration with Json files
  .Notes
- Last Update: 18/09/2017
+ Last Update: 19/09/2017
 #>
 
 Set-StrictMode -Version Latest
@@ -16,11 +16,11 @@ Import-LocalizedData -BindingVariable MsgTable -FileName PoshObjectsLabText.psd1
 
 # Load ps1 file with helper functions that should be exported
 $HelperPath = Join-Path -Path $PSScriptRoot -ChildPath ..
-$HelperPath = Join-Path -Path $HelperPath -ChildPath .\DCHelper.ps1
+$HelperPath = Join-Path -Path $HelperPath -ChildPath .\DCHelperV2.ps1
 .$HelperPath
 
 # Stores the server size configuration from a Json config file
-$Global:ServerConfigList = @{}
+$Script:ServerConfig = $null
 
 # Different event categories
 enum EventCategory
@@ -71,76 +71,6 @@ Enum ServerSize
     Big
 }
 
-# Represents a single server
-class Server
-{
-  [Int]$Id
-  [String]$Name
-  [DateTime]$StartTime
-  [ServerState]$State
-  [ServerStatus]$Status
-  [ServerSize]$Size 
-  [Long]$MemoryGB
-  [Byte]$CPUCount
-  [String]$ServerOS
-  [Double]$CostPerHour = 1
-  [Int]$RunningTimeSecond
-  [System.Timers.Timer]$Timer
-  [System.Collections.Generic.List[LogEvent]]$Eventlog
-
-  # Constructor with Size argument
-  Server([ServerSize]$Size)
-  {
-  # TODO: Server config
-  }
-
-  # Starts this server
-  [void]Start()
-  {
-    $this.StartTime = Get-Date
-    $this.Status = [ServerState]::Running
-    $this.Timer = New-Object -TypeName System.Timers.Timer
-    $this.Timer.Interval = 5000
-    $this.Eventlog = New-Object -TypeName System.Collections.Generic.List[LogEvent]
-    # Event vorsichtshalber entfernen
-    Unregister-Event -SourceIdentifier "ServerEvent$($this.Id)" -Force -ErrorAction Ignore
-    Register-ObjectEvent -InputObject $this.Timer -EventName Elapsed -SourceIdentifier "ServerEvent$($this.Id)" `
-     -Action {
-        $EventLog = $Event.MessageData
-        $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Server-State: " + $this.ServerState +
-         " Server-Status: " + $this.ServerStatus))
-        # Calculate current costs  - the server is running anyway
-        if ($this.State -eq "Running")
-        {
-            $this.RunningTimeSecond += 5
-            $this.TotalCost += $this.CostPerHour / 3600 * 5
-        }        
-    } -MessageData $this.Eventlog
-    $this.Timer.Start()
-  }
-
-  # Stops this server
-  [void]Stop()
-  {
-    $this.Status = [ServerState]::Stopped
-    $this.Timer.Stop()
-  }
-
-  # Get the running time of a server as a TimeSpan
-  [TimeSpan]GetRunningTime()
-  {
-    return [TimeSpan]::new(0,0, $this.RunningTimeSecond)
-  }
-
-  # Gets the current cost of this server
-  [Double]GetCost()
-  {
-      $RunningHours = $this.RunningTimeSecond / 3600
-      # 0.1 damit nicht immer 0 herauskommt
-      return ($this:CostPerCPUHour * $RunningHours + 0.1)
-  }
-}
-
 # Represents a customer order
 class CustomerOrder
 {
@@ -171,6 +101,121 @@ class Accounting
     
 }
 
+# Represents a single server
+class Server
+{
+  [Int]$Id
+  [String]$Name
+  [DateTime]$StartTime
+  [ServerState]$State
+  [ServerStatus]$Status
+  [ServerSize]$Size 
+  [Long]$MemoryGB
+  [Byte]$CPUCount
+  [String]$ServerOS
+  [Double]$CostPerHour
+  [Double]$TotalCost
+  [Int]$RunningTimeSeconds
+  [System.Timers.Timer]$Timer
+  [System.Collections.Generic.List[LogEvent]]$Eventlog
+
+  # Constructor with Size and Id argument - Id is important for timer event registration
+  Server([ServerSize]$Size, [Int]$Id)
+  {
+      $this.Size = $Size
+      $this.Id = $Id
+      $this.MemoryGB = $Script:ServerConfig.$Size.RAMGB
+      $this.CPUCount = $Script:ServerConfig.$Size.CPUCount
+      $this.ServerOS = $Script:ServerConfig.$Size.OS
+      $this.CostPerHour = $Script:ServerConfig.$Size.CostPerHour
+      $this.State = [ServerState]::Stopped # Alternative "Stopped"
+      $this.Status = [ServerStatus]::Green # Alternative "Green"
+  }
+
+  # Starts this server
+  [void]Start()
+  {
+    $this.StartTime = Get-Date
+    $this.State = [ServerState]::Running
+    $this.Timer = New-Object -TypeName System.Timers.Timer
+    $this.Timer.Interval = 5000
+    $this.Eventlog = New-Object -TypeName System.Collections.Generic.List[LogEvent]
+    # Event vorsichtshalber entfernen
+    Unregister-Event -SourceIdentifier "ServerEvent$($this.Id)" -Force -ErrorAction Ignore
+    Register-ObjectEvent -InputObject $this.Timer -EventName Elapsed -SourceIdentifier "ServerEvent$($this.Id)" `
+     -Action {
+        $EventLog = $Event.MessageData.Eventlog
+        $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "Server-State: " + $Event.MessageData.State +
+         " Server-Status: " + $Event.MessageData.Status))
+        # Calculate current costs  -  only if the server is running
+        if ($Event.MessageData.State -eq [ServerState]::Running)
+        {
+            $Event.MessageData.RunningTimeSeconds += 5
+            $Event.MessageData.TotalCost += $Event.MessageData.CostPerHour / 3600 * 5
+        }
+        # Change Server status
+        switch($Event.MessageData.ServerStatus)
+        {
+            "Green" {
+                # 20% chance to change to yellow
+                if ([System.Random]::new().NextDouble() -gt 0.8)
+                {
+                    $Event.MessageData.ServerStatus = "Yellow"
+                    $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, $Event.MessageData.MsgTable.ServerStateSwitchedMsg -f "Yellow"))
+                }
+            }
+            "Yellow" {
+                # 15% chance to change to Orange
+                if ([System.Random]::new().NextDouble() -gt 0.85)
+                {
+                    $Event.MessageData.ServerStatus = "Orange"
+                    $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, $Event.MessageData.MsgTable.ServerStateSwitchedMsg -f "Orange"))
+                }
+            }
+            "Orange" {
+                # 15% chance to change to Red
+                if ([System.Random]::new().NextDouble() -gt 0.9)
+                {
+                    $Event.MessageData.ServerStatus = "Red"
+                    $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, $Event.MessageData.MsgTable.ServerStateSwitchedMsg -f "Red"))
+                }
+            }
+            "Red" {
+                # 80% chance to change to Green
+                if ([System.Random]::new().NextDouble() -gt 0.2)
+                {
+                    $Event.MessageData.ServerStatus = "Green"
+                    $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, $Event.MessageData.MsgTable.ServerStateSwitchedMsg -f "Green"))
+                }
+           }
+        }
+
+    } -MessageData $this
+    $this.Timer.Start()
+  }
+
+  # Stops this server
+  [void]Stop()
+  {
+    $this.State = [ServerState]::Stopped
+    $this.Timer.Stop()
+  }
+
+  # Get the running time of a server as a TimeSpan
+  [TimeSpan]GetRunningTime()
+  {
+    return [TimeSpan]::new(0, 0, $this.RunningTimeSeconds)
+  }
+
+  # Gets the current cost of this server
+  [Double]GetCost()
+  {
+      $RunningHours = $this.RunningTimeSeconds / 3600
+      # 0.1 damit nicht immer 0 herauskommt
+      return ($this:CostPerCPUHour * $RunningHours + 0.1)
+  }
+}
+
 # Represents the whole Data Center
 class DataCenter
 {
@@ -180,28 +225,32 @@ class DataCenter
     # The name of the fictious company
     [String]$CompanyName
     
-    # The Account Data for billing
-    [Accounting]$Account
-    
     # The Starttime of the DC
     [DateTime]$StartTime 
 
     # Contains all the servers of the DC
     [System.Collections.Generic.List[Server]]$ServerList
 
-    # Contains all the orders
-    [System.Collections.Generic.List[Server]]$OrderList
-        
     # A timer that generates events in the DC
     [System.Timers.Timer]$Timer
 
     # Container for all log messages
     [System.Collections.Generic.List[LogEvent]]$Eventlog
+
+    # The Account Data for billing
+    [Accounting]$Account
+        
+    # Contains all the orders
+    [System.Collections.Generic.List[Server]]$OrderList
     
     # Initializes the Data Center
-    [void]DCInit()
+    [void]DCInit([String]$ServerConfigPath)
     {
+        # Initialize the server sizes with configuration date
+        $Script:ServerConfig = Get-Content -Path $ServerConfigPath | ConvertFrom-Json 
+        # the DC-Id is a GUID
         $this.Id = (New-Guid).Guid
+        # Set the start time of the DC
         $this.StartTime = Get-Date
         # Timer should tick every 5 seconds
         $this.Timer = [System.Timers.Timer]::new()
@@ -212,18 +261,12 @@ class DataCenter
         Unregister-Event -SourceIdentifier "DCTimer$($this.Id)" -Force -ErrorAction Ignore
         Register-ObjectEvent -InputObject $this.Timer -EventName Elapsed -SourceIdentifier "DCTimer$($this.Id)" `
          -Action {
-            # Generate new customer order eventually
-            if ((Get-Random -Maximum 10) -gt 5)
-            {
-                $Order = [CustomerOrder]::new($this.OrderList + 1)
-                $Order.OrderDate = Get-Date
-                $Order.CustomerName = "ALFKI", "ANATR", "ANTON" | Get-Random
-                $Order.RessourceAmount = 1..100 | Get-Random
-                $this.OrderList.Add($Order)
-                $EventLog = $Event.MessageData
-                $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, "New Order placed"))        
-                }
-        } -MessageData $this.Eventlog
+            $EventLog = $Event.MessageData.EventLog
+            $DCStatus = ($Event.MessageData.ServerList | Group-Object -Property Status | ForEach-Object {
+                "Status: $($_.Name) - Count: $($_.Count)" 
+            })
+            $Eventlog.Add([LogEvent]::new($Eventlog.Count+1, [EventCategory]::Information, $DCStatus))        
+        } -MessageData $this
         $this.Timer.Start()
     }
 
@@ -231,18 +274,16 @@ class DataCenter
     DataCenter([String]$CompanyConfigPath, [String]$ServerConfigPath)
     {
         $this.DCInit($ServerConfigPath)
-        # Store reference of this instance in global variable
+        # Initialize the server list
         $this.Serverlist = New-Object -TypeName System.Collections.Generic.List[Server]
-        # Read configuration and server data from json file
+        # Read company configuration and server data from json file
         Get-Content -Path $CompanyConfigPath | ConvertFrom-Json | ForEach-Object {
             $this.CompanyName = $_.CompanyName
-            $this.Account = [Accounting]::new($_.InitialCapital)
-            foreach($HwData in $_.Hardware)
+            # Initialize the servers for the company
+            foreach($HardwareData in $_.Hardware)
             {
-                $Server = [Server]::new($HwData.ServerSize)
-                $Server.Name = $HwData.Name
-                # Take Server price into account
-                $this.Account.Capital -= $HwData.InitialCost  
+                $Server = [Server]::new($HardwareData.ServerSize, $this.ServerList.Count + 1)
+                $Server.Name = $HardwareData.Name
                 $this.Serverlist.Add($Server)
             }
         }
@@ -251,15 +292,9 @@ class DataCenter
     # AddServer method - returns the new server object
     [Server]AddServer([ServerSize]$Size)
     {
-        $ServerConfig = $ServerConfigList.$Size
-        $NewServer = [Server]::new()
-        $NewServer.Id = $this.ServerList.Count + 1
-        $NewServer.Size = $Size
-        $NewServer.MemoryGB = $ServerConfig.MemoryGB
-        $NewServer.CPUCount = $ServerConfig.CpuCount
-        $NewServer.ServerOS = $ServerConfig.OS
-        $NewServer.CostPerHour = $ServerConfig.CostPerHour
+        $NewServer = [Server]::new($Size, $this.ServerList.Count + 1)
         $this.ServerList.Add($NewServer)
+        Write-Verbose ($Script:MsgTable.ServerAdded -f $Size)
         return $NewServer
     }
 
@@ -267,6 +302,7 @@ class DataCenter
     [void]RemoveServer([Server]$Server)
     {
         $this.ServerList.Remove($Server)
+        Write-Verbose ($Script:MsgTable.ServerRemoved -f $Server)
     }
 
     # Remove Server method
@@ -276,9 +312,10 @@ class DataCenter
         if ($Server -ne $null)
         {
             $this.ServerList.Remove($Server)
+            Write-Verbose ($Script:MsgTable.ServerRemoved -f $Server)
         }
         else {
-            throw "Server mit Id=$ServerId gibt es nicht."
+            throw ($Script:MsgTable.ServerNotFound -f $ServerId)
         }
     }
 } # End DC class definition
@@ -301,11 +338,13 @@ class ServerCost
 } # End ServerCost class definition
 
 Export-ModuleMember -Function  New-DCStartup,
+Get-DCStatus,
 Add-Server, 
+Start-Server,
+Stop-Server,
 Remove-Server, 
-Remove-ServerbyId, 
+Remove-ServerById, 
 Get-Server,
 Get-ServerCost,
-Get-TotalCost,
-Get-Order
+Get-TotalCost
  
